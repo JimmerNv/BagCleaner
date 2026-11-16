@@ -1,18 +1,15 @@
 name: WoW-Forever-Release veröffentlichen
 
 on:
-  # Erstellt bei gepushtem Tag automatisch ein vollständiges GitHub Release.
   push:
     tags:
       - 'v*'
-  # Wer ein Release auf GitHub manuell veröffentlicht, erhält das ZIP ebenfalls.
   release:
     types: [published]
-  # Wiederholbar für bestehende Tags/Releases (z.B. nach Fehlerbehebung).
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Vorhandener Git-Tag, z.B. v1.4.1'
+        description: 'Vorhandener Git-Tag, z.B. v1.5.0'
         required: true
         type: string
 
@@ -25,20 +22,34 @@ concurrency:
 
 jobs:
   release:
-    name: Testen, packen und veröffentlichen
+    name: Testen, packen und auf GitHub + CurseForge veröffentlichen
     runs-on: ubuntu-latest
     env:
       RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag || github.ref_name }}
       GH_TOKEN: ${{ github.token }}
+
     steps:
-      - name: Release-Tag auschecken
+      - name: Release-Tag samt Git-Historie auschecken
         uses: actions/checkout@v4
         with:
           ref: ${{ env.RELEASE_TAG }}
+          fetch-depth: 0
+
+      - name: Release-Tag validieren
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$ ]]; then
+            echo "Ungültiger Release-Tag: $RELEASE_TAG" >&2
+            exit 1
+          fi
+          git rev-parse --verify "refs/tags/${RELEASE_TAG}^{commit}" >/dev/null
+
       - name: Lua 5.1 installieren
         run: |
           sudo apt-get update
           sudo apt-get install -y lua5.1
+
       - name: Lua-Tests ausführen
         working-directory: BagCleaner
         shell: bash
@@ -48,22 +59,169 @@ jobs:
             echo "--- $test ---"
             lua5.1 "$test"
           done
+
       - name: Installations-ZIP und Prüfsumme bauen
         shell: bash
         run: |
           set -euo pipefail
           python3 scripts/build_release.py --tag "$RELEASE_TAG"
-      - name: GitHub Release erstellen oder ZIP anhängen
+
+      - name: Release Notes aus relevanten Commit-Nachrichten erstellen
         shell: bash
         run: |
           set -euo pipefail
-          # Asset-Uploads zu unveränderlich veröffentlichten Releases können
-          # blockiert sein; am zuverlässigsten ist das Pushen eines Git-Tags.
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            echo "Release vorhanden: aktualisiere die Download-Dateien"
-            gh release upload "$RELEASE_TAG" dist/*.zip dist/*.sha256 --clobber
+          PREVIOUS_TAG="$(git describe --tags --abbrev=0 --match 'v*' "${RELEASE_TAG}^" 2>/dev/null || true)"
+          if [[ -n "$PREVIOUS_TAG" ]]; then
+            export CHANGELOG_RANGE="${PREVIOUS_TAG}..${RELEASE_TAG}"
+            echo "Änderungen seit ${PREVIOUS_TAG}"
           else
-            echo "Erstelle GitHub Release für $RELEASE_TAG"
-            gh release create "$RELEASE_TAG" dist/*.zip dist/*.sha256 \
-              --verify-tag --title "BagCleaner $RELEASE_TAG (WoW Forever)" --generate-notes
+            export CHANGELOG_RANGE="$RELEASE_TAG"
+            echo "Erster Release-Tag; werte die gesamte Historie bis ${RELEASE_TAG} aus"
           fi
+
+          python3 - <<'PY'
+          import os
+          import re
+          import subprocess
+          from pathlib import Path
+
+          tag = os.environ['RELEASE_TAG']
+          revision_range = os.environ['CHANGELOG_RANGE']
+          subjects = subprocess.check_output(
+              ['git', 'log', '--no-merges', '--format=%s', revision_range],
+              text=True,
+          ).splitlines()
+
+          # Nur nutzerrelevante Conventional Commits veröffentlichen.
+          # refactor, test, chore, docs, ci, build und style werden ignoriert.
+          sections = [
+              ('feat', 'New Features'),
+              ('fix', 'Bug Fixes'),
+              ('perf', 'Performance'),
+              ('security', 'Security'),
+              ('revert', 'Reverts'),
+          ]
+          entries = {kind: [] for kind, _ in sections}
+          expression = re.compile(
+              r'^(feat|fix|perf|security|revert)(?:\(([^)]+)\))?(!)?:\s*(.+)$',
+              re.IGNORECASE,
+          )
+
+          for subject in subjects:
+              match = expression.match(subject.strip())
+              if not match:
+                  continue
+              kind, scope, breaking, description = match.groups()
+              kind = kind.lower()
+              description = description.strip().replace('\\', '\\\\')
+              if scope:
+                  description = f'**{scope}:** {description}'
+              if breaking:
+                  description = f'**BREAKING:** {description}'
+              line = f'- {description}'
+              if line not in entries[kind]:
+                  entries[kind].append(line)
+
+          lines = [f'# BagCleaner {tag} – WoW Forever', '']
+          count = 0
+          for kind, heading in sections:
+              if entries[kind]:
+                  lines.extend([f'## {heading}', '', *entries[kind], ''])
+                  count += len(entries[kind])
+          if count == 0:
+              lines.extend(['No user-facing changes recorded using Conventional Commits.', ''])
+
+          path = Path('dist/release-notes.md')
+          path.write_text('\n'.join(lines).rstrip() + '\n', encoding='utf-8')
+          print(path.read_text(encoding='utf-8'))
+          PY
+
+      - name: GitHub Release erstellen oder Dateien ergänzen
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release vorhanden: fehlende Dateien ergänzen"
+            for asset in dist/*.zip dist/*.sha256; do
+              if gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' \
+                | grep -Fxq "$(basename "$asset")"; then
+                echo "Bereits vorhanden: $(basename "$asset")"
+              else
+                gh release upload "$RELEASE_TAG" "$asset"
+              fi
+            done
+            # Bei einem bereits erfolgten CurseForge-Upload den Beleg behalten.
+            if ! gh release view "$RELEASE_TAG" --json body --jq '.body' \
+              | grep -q '<!-- curseforge-file-id:'; then
+              gh release edit "$RELEASE_TAG" --notes-file dist/release-notes.md
+            fi
+          else
+            echo "Erstelle GitHub Release $RELEASE_TAG"
+            extras=()
+            if [[ "$RELEASE_TAG" == *-* ]]; then
+              extras+=(--prerelease)
+            fi
+            gh release create "$RELEASE_TAG" dist/*.zip dist/*.sha256 \
+              --verify-tag \
+              --title "BagCleaner $RELEASE_TAG (WoW Forever)" \
+              --notes-file dist/release-notes.md \
+              "${extras[@]}"
+          fi
+
+      - name: Dieselbe ZIP mit Changelog auf CurseForge hochladen
+        shell: bash
+        env:
+          CF_API_TOKEN: ${{ secrets.CURSEFORGE_API_TOKEN }}
+          CF_PROJECT_ID: ${{ vars.CURSEFORGE_PROJECT_ID }}
+          CF_GAME_VERSION_IDS: ${{ vars.CURSEFORGE_GAME_VERSION_IDS }}
+        run: |
+          set -euo pipefail
+
+          # Ein bereits erfolgreich veröffentlichter Tag wird nicht erneut hochgeladen.
+          if gh release view "$RELEASE_TAG" --json body --jq '.body' \
+            | grep -q '<!-- curseforge-file-id:'; then
+            echo "CurseForge für $RELEASE_TAG bereits veröffentlicht; überspringe Upload."
+            exit 0
+          fi
+
+          : "${CF_API_TOKEN:?GitHub Secret CURSEFORGE_API_TOKEN fehlt}"
+          : "${CF_PROJECT_ID:?GitHub Variable CURSEFORGE_PROJECT_ID fehlt}"
+          : "${CF_GAME_VERSION_IDS:?GitHub Variable CURSEFORGE_GAME_VERSION_IDS fehlt}"
+
+          jq -e 'type == "array" and length > 0 and all(.[]; type == "number" and . > 0)' \
+            <<< "$CF_GAME_VERSION_IDS" >/dev/null
+
+          shopt -s nullglob
+          zips=(dist/BagCleaner_v*_Forever.zip)
+          if (( ${#zips[@]} != 1 )); then
+            echo "Erwarte genau ein BagCleaner-Release-ZIP unter dist/." >&2
+            exit 1
+          fi
+
+          lower_tag="${RELEASE_TAG,,}"
+          case "$lower_tag" in
+            *-alpha*) release_type='alpha' ;;
+            *-beta*|*-rc*) release_type='beta' ;;
+            *) release_type='release' ;;
+          esac
+
+          metadata="$(jq -nc \
+            --arg changelog "$(cat dist/release-notes.md)" \
+            --arg displayName "BagCleaner $RELEASE_TAG (WoW Forever)" \
+            --arg releaseType "$release_type" \
+            --argjson gameVersions "$CF_GAME_VERSION_IDS" \
+            '{changelog: $changelog, changelogType: "markdown", displayName: $displayName, releaseType: $releaseType, gameVersions: $gameVersions}')"
+
+          curl --fail-with-body --show-error --silent \
+            -H "X-Api-Token: $CF_API_TOKEN" \
+            --form-string "metadata=$metadata" \
+            -F "file=@${zips[0]};type=application/zip" \
+            -o dist/curseforge-response.json \
+            "https://wow.curseforge.com/api/projects/${CF_PROJECT_ID}/upload-file"
+
+          file_id="$(jq -er '.id | select(type == "number" and . > 0)' dist/curseforge-response.json)"
+          echo "CurseForge-Upload erfolgreich: File-ID $file_id"
+
+          # Verhindert erneute Uploads bei späteren Release-Events / manuellen Runs.
+          printf '\n<!-- curseforge-file-id:%s -->\n' "$file_id" >> dist/release-notes.md
+          gh release edit "$RELEASE_TAG" --notes-file dist/release-notes.md
