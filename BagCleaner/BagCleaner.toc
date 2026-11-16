@@ -1,0 +1,14 @@
+## Interface: 16001
+## Title: BagCleaner
+## Notes: Taschen nach Händlerwert aufräumen. /clean, ElvUI, Titan Panel und Standalone.
+## Notes-deDE: Taschen aufräumen, Stapel schützen und günstige Gegenstände löschen.
+## Category: Bags
+## Category-deDE: Taschen
+## X-Category: Bags
+## Author: BagCleaner community build
+## Version: 1.4.1
+## OptionalDeps: ElvUI, Titan, TitanPanel
+## SavedVariables: BagCleanerDB
+Core.lua
+UI.lua
+Titan.lua

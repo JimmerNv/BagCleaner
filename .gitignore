@@ -1,0 +1,10 @@
+# Build-Artefakte
+dist/
+*.zip
+*.sha256
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

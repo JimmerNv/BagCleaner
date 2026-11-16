@@ -1,0 +1,44 @@
+name: Tests und Paketprüfung
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Lua-Tests und ZIP-Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Quellcode auschecken
+        uses: actions/checkout@v4
+      - name: Lua 5.1 installieren
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lua5.1
+      - name: Lua-Quellcode und vorhandene Mock-Tests prüfen
+        working-directory: BagCleaner
+        shell: bash
+        run: |
+          set -euo pipefail
+          for test in ../tests/*.lua; do
+            echo "--- $test ---"
+            lua5.1 "$test"
+          done
+      - name: ZIP lokal testweise erstellen
+        run: python3 scripts/build_release.py
+      - name: Inhalt des Installationspakets kontrollieren
+        run: |
+          python3 - <<'PYTEST'
+          from pathlib import Path
+          import zipfile
+          zip_path = next(Path('dist').glob('*.zip'))
+          with zipfile.ZipFile(zip_path) as z:
+              assert all(name.startswith('BagCleaner/') for name in z.namelist())
+              assert 'BagCleaner/BagCleaner.toc' in z.namelist()
+              assert z.testzip() is None
+          print('ZIP package OK:', zip_path)
+          PYTEST

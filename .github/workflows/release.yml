@@ -1,0 +1,69 @@
+name: WoW-Forever-Release veröffentlichen
+
+on:
+  # Erstellt bei gepushtem Tag automatisch ein vollständiges GitHub Release.
+  push:
+    tags:
+      - 'v*'
+  # Wer ein Release auf GitHub manuell veröffentlicht, erhält das ZIP ebenfalls.
+  release:
+    types: [published]
+  # Wiederholbar für bestehende Tags/Releases (z.B. nach Fehlerbehebung).
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Vorhandener Git-Tag, z.B. v1.4.1'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bagcleaner-release-${{ github.event.release.tag_name || inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Testen, packen und veröffentlichen
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Release-Tag auschecken
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+      - name: Lua 5.1 installieren
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lua5.1
+      - name: Lua-Tests ausführen
+        working-directory: BagCleaner
+        shell: bash
+        run: |
+          set -euo pipefail
+          for test in ../tests/*.lua; do
+            echo "--- $test ---"
+            lua5.1 "$test"
+          done
+      - name: Installations-ZIP und Prüfsumme bauen
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/build_release.py --tag "$RELEASE_TAG"
+      - name: GitHub Release erstellen oder ZIP anhängen
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Asset-Uploads zu unveränderlich veröffentlichten Releases können
+          # blockiert sein; am zuverlässigsten ist das Pushen eines Git-Tags.
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release vorhanden: aktualisiere die Download-Dateien"
+            gh release upload "$RELEASE_TAG" dist/*.zip dist/*.sha256 --clobber
+          else
+            echo "Erstelle GitHub Release für $RELEASE_TAG"
+            gh release create "$RELEASE_TAG" dist/*.zip dist/*.sha256 \
+              --verify-tag --title "BagCleaner $RELEASE_TAG (WoW Forever)" --generate-notes
+          fi
