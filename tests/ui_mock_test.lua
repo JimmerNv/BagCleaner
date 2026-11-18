@@ -15,6 +15,7 @@ local function widget(name)
     end end
     if key == 'Hide' then return function()
       self._visible=false
+      if self.script_OnHide then self.script_OnHide(self) end
       if self.hooks.OnHide then self.hooks.OnHide(self) end
     end end
     if key == 'HookScript' then return function(_,k,fn) self.hooks[k]=fn end end
@@ -47,8 +48,8 @@ function GetContainerNumSlots() return 0 end
 function GetContainerNumFreeSlots() return 0 end
 function GetCursorInfo() end
 function GetContainerItemQuestInfo() end
-StaticPopupDialogs={}
-function StaticPopup_Show() return widget() end
+StaticPopupDialogs=setmetatable({}, {__newindex=function() error('Blizzard popup registry tainted') end})
+function StaticPopup_Show() error('Blizzard popup invoked') end
 SlashCmdList={}
 DEFAULT_CHAT_FRAME={AddMessage=function() end}
 YES='Yes';NO='No'
@@ -62,6 +63,25 @@ assert(loadfile('UI.lua'))('BagCleaner',BC)
 BC:InitDB()
 BC:CreateUI()
 assert(BC.panel and BC.options and BC.standaloneButton,'UI instantiated')
+assert(BC.deleteConfirmation and BC.deleteConfirmation.acceptButton and BC.deleteConfirmation.cancelButton,
+  'custom confirmation created without touching Blizzard popup registry')
+BC.pending={items={},total=0}
+assert(BC:ShowDeleteConfirmation('Confirm test') and BC.deleteConfirmation:IsShown(),
+  'dedicated confirmation opens')
+BC.deleteConfirmation.cancelButton.script_OnClick()
+assert(not BC.pending and not BC.deleteConfirmation:IsShown(),
+  'cancel discards selected items and hides the dialog')
+local oldAccept,oldHardware=BC.AcceptPending,BC.HardwareDeleteNext
+local confirmed,hardware=0,0
+BC.AcceptPending=function(self) confirmed=confirmed+1;self.pending=nil;self.job={} end
+BC.HardwareDeleteNext=function(self) hardware=hardware+1;self.job=nil end
+BC.pending={items={},total=0}
+BC:ShowDeleteConfirmation('Confirm test')
+BC.deleteConfirmation.acceptButton.script_OnClick()
+assert(confirmed==1 and hardware==1 and not BC.pending and not BC.deleteConfirmation:IsShown(),
+  'accept invokes selected cleanup once through real button click')
+BC.AcceptPending,BC.HardwareDeleteNext=oldAccept,oldHardware
+assert(next(StaticPopupDialogs)==nil,'Blizzard popup table remains untouched')
 assert(BC.panel.BagCleanerBackground and #BC.panel.BagCleanerBorder==4,
   'opaque panel and four independent borders without ElvUI or SetBackdrop')
 assert(BC.options.BagCleanerBackground and BC.itemMenu.BagCleanerBackground,

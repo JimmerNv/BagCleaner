@@ -49,13 +49,23 @@ end
 function DeleteCursorItem() cursor=nil end
 function GetCursorInfo() if cursor then return 'item',cursor.id,cursor.link end end
 function InCombatLockdown() return false end
-StaticPopupDialogs={}
-function StaticPopup_Show(key,title)
- popup={key=key,title=title};return popup
+-- Fail the test immediately if the addon writes to Blizzard's popup registry.
+StaticPopupDialogs=setmetatable({}, {__newindex=function() error('Blizzard StaticPopupDialogs modified by addon') end})
+function StaticPopup_Show() error('Blizzard StaticPopup_Show invoked by addon') end
+function BC:ShowDeleteConfirmation(title)
+ popup={title=title}
+ return true
 end
 function accept()
- assert(popup,'popup not shown');popup=nil
- StaticPopupDialogs.BAGCLEANER_CONFIRM.OnAccept()
+ assert(popup,'custom confirmation not shown')
+ popup=nil
+ BC:AcceptPending()
+ if BC.job then BC:HardwareDeleteNext() end
+end
+function cancel()
+ assert(popup,'custom confirmation not shown')
+ popup=nil
+ BC.pending=nil
 end
 function tick(seconds)
  local times=math.ceil(seconds/0.2)
@@ -110,8 +120,8 @@ reset()
 item(0,1,501,0,1,10,'one')
 BC:Cleanup(1)
 assert(BC.pending and bags[0][1], 'popup without auto-deletion')
-StaticPopupDialogs.BAGCLEANER_CONFIRM.OnCancel()
-BC.pending=nil
+cancel()
+assert(not BC.pending, 'cancel discards pending selection')
 assert(bags[0][1], 'cancel leaves bag untouched')
 print('PASS: item scan, item sorting, white-protection, quest exclusion, confirmation, batch queue, stale slot safety, cancellation')
 -- 1.1 regression scenarios: optional confirmation, blacklist, slash commands and /clean all.
@@ -150,7 +160,7 @@ item(0,2,921,0,1,2,'second')
 SlashCmdList.BAGCLEANER('2')
 assert(popup and not BC.job,'/clean 2 honors confirmation setting')
 assert(BC.pending and #BC.pending.items==2,'/clean 2 queued correct count')
-StaticPopupDialogs.BAGCLEANER_CONFIRM.OnCancel();BC.pending=nil
+cancel()
 SlashCmdList.BAGCLEANER('confirm')
 assert(BC.db.confirmDelete==false,'/clean confirm toggles confirmation')
 SlashCmdList.BAGCLEANER('')
@@ -184,3 +194,21 @@ BC:Cleanup(2)
 assert(BC.job and BC.job.items[1].id==1802 and BC.job.items[2].id==1803,
   'automatic cleanup chooses lowest total stack value, not lowest unit price')
 print('PASS: strict total-stack priority, legacy sort migration and start-from-top refresh')
+-- 1.4.2: the confirmation must fail closed without its own UI and must never
+-- invoke Blizzard's protected popup registry, even when it is present.
+reset()
+BC.db.confirmDelete=true
+item(0,1,1999,0,1,11,'taint_guard')
+local show = BC.ShowDeleteConfirmation
+BC.ShowDeleteConfirmation=nil
+BC:Cleanup(1)
+assert(not BC.pending and not BC.job and bags[0][1],
+  'missing custom dialog aborts without deleting the item')
+BC.ShowDeleteConfirmation=function() error('custom UI failed') end
+BC:Cleanup(1)
+assert(not BC.pending and not BC.job and bags[0][1],
+  'failing custom dialog aborts without deleting the item')
+BC.ShowDeleteConfirmation=show
+assert(next(StaticPopupDialogs)==nil, 'Blizzard popup registry remains unmodified')
+print('PASS: no Blizzard popup registry taint, missing/failed confirmation fails closed')
+

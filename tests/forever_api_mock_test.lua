@@ -42,7 +42,7 @@ end
 C_AddOns={IsAddOnLoaded=function(name)return name=='ElvUI' end}
 function GetCursorInfo() if cursor then return 'item',cursor.id end end
 function DeleteCursorItem() cursor=nil end
-StaticPopupDialogs={};function StaticPopup_Show(name) return {} end
+StaticPopupDialogs=setmetatable({}, {__newindex=function() error("tainted popup registry") end})
 SlashCmdList={};YES='yes';NO='no';DEFAULT_CHAT_FRAME={AddMessage=function()end}
 assert(loadfile('Core.lua'))('BagCleaner',BC)
 BC:InitDB()

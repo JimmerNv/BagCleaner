@@ -48,7 +48,7 @@ C_TooltipInfo = {
 }
 function GetCursorInfo()return nil end
 function DeleteCursorItem()end
-StaticPopupDialogs={};function StaticPopup_Show() return {} end
+StaticPopupDialogs=setmetatable({}, {__newindex=function() error("tainted popup registry") end})
 SlashCmdList={}; YES='yes';NO='no';DEFAULT_CHAT_FRAME={AddMessage=function()end}
 assert(loadfile('Core.lua'))('BagCleaner',BC)
 BC:InitDB()
