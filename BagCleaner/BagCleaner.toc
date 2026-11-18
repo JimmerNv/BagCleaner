@@ -6,7 +6,7 @@
 ## Category-deDE: Taschen
 ## X-Category: Bags
 ## Author: BagCleaner community build
-## Version: 1.4.2
+## Version: 1.4.3
 ## OptionalDeps: ElvUI, Titan, TitanPanel
 ## SavedVariables: BagCleanerDB
 Core.lua
