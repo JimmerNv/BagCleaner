@@ -753,6 +753,62 @@ function BC:RefreshUI()
     end
 end
 
+-- Dedicated, *addon-owned* delete confirmation. Unlike the Blizzard popup system,
+-- this does not write to Blizzard's global secure popup registry. Closing the
+-- window without accepting always discards the pending request.
+function BC:MakeDeleteConfirmation()
+    local frame = CreateFrame("Frame", "BagCleanerDeleteConfirmation", UIParent)
+    frame:SetSize(490, 315)
+    frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+    frame:SetFrameStrata("DIALOG")
+    frame:SetFrameLevel(200)
+    frame:SetToplevel(true)
+    frame:SetClampedToScreen(true)
+    frame:EnableMouse(true)
+    Skin(frame, DARK, true)
+    frame:Hide()
+
+    local title = Label(frame, "BagCleaner - Löschung bestätigen", 14, 0.35, 0.75, 1)
+    title:SetPoint("TOPLEFT", frame, "TOPLEFT", 16, -15)
+
+    local description = Label(frame, "", 11, 1, 1, 1)
+    description:SetPoint("TOPLEFT", frame, "TOPLEFT", 16, -48)
+    description:SetWidth(456)
+    description:SetHeight(211)
+    description:SetJustifyH("LEFT")
+    description:SetJustifyV("TOP")
+    frame.description = description
+
+    local cancel = Button(frame, "Abbrechen", 105, 28)
+    cancel:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -16, 14)
+    cancel:SetScript("OnClick", function() frame:Hide() end)
+
+    local accept = Button(frame, "Jetzt löschen", 120, 28)
+    accept:SetPoint("RIGHT", cancel, "LEFT", -10, 0)
+    accept:SetScript("OnClick", function()
+        -- AcceptPending validates every live slot again; deletion is invoked
+        -- directly by this hardware click, never by an OnUpdate callback.
+        BC:AcceptPending()
+        frame:Hide()
+        if BC.job then BC:HardwareDeleteNext() end
+    end)
+    frame:SetScript("OnHide", function()
+        -- Cancellation, closing and visibility changes fail closed.
+        BC.pending = nil
+    end)
+    frame.acceptButton = accept
+    frame.cancelButton = cancel
+    self.deleteConfirmation = frame
+end
+
+function BC:ShowDeleteConfirmation(message)
+    local frame = self.deleteConfirmation
+    if not frame or type(message) ~= "string" then return false end
+    frame.description:SetText(message)
+    frame:Show()
+    return true
+end
+
 function BC:MakePanel()
     local panel = CreateFrame("Frame", "BagCleanerPanel", UIParent)
     panel:SetSize(PANEL_W, PANEL_H)
@@ -896,7 +952,7 @@ end
 function BC:CreateUI()
     -- Make each independent entry point resilient to errors in another section.
     -- Previously an error in the panel could prevent all launchers from appearing.
-    local sections = {"MakeOptions", "MakeBlacklistPanel", "MakePanel", "MakeItemMenu", "MakeStandaloneButton", "MakeMinimapButton"}
+    local sections = {"MakeOptions", "MakeBlacklistPanel", "MakePanel", "MakeDeleteConfirmation", "MakeItemMenu", "MakeStandaloneButton", "MakeMinimapButton"}
     for _, name in ipairs(sections) do
         local ok, err = pcall(self[name], self)
         if not ok then self.Print(name .. " fehlgeschlagen: " .. tostring(err)) end

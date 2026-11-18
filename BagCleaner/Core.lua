@@ -1,4 +1,4 @@
--- BagCleaner 1.4.1 - WoW Forever 1.60.1 (Lua 5.1)
+-- BagCleaner 1.4.2 - WoW Forever 1.60.1 (Lua 5.1)
 -- Standalone by default, with an automatic ElvUI bags integration.
 local addonName, BC = ...
 _G.BagCleaner = BC
@@ -353,7 +353,10 @@ function BC:DeleteSelected(items, allowClosed)
         self.Print("Auswahl vorbereitet. Im Taschenfenster auf 'Jetzt löschen' klicken.")
         return
     end
-    if type(StaticPopup_Show) ~= "function" or not StaticPopupDialogs then
+    -- Do not register custom dialogs in Blizzard's global popup registry.
+    -- Tainting that table can block unrelated actions (bank tab purchases,
+    -- item usage and even logout) on the modern WoW Forever client.
+    if type(self.ShowDeleteConfirmation) ~= "function" then
         self.pending = nil
         self.Print("Sicherheitsabfrage nicht verfügbar; es wird nichts gelöscht.")
         return
@@ -361,8 +364,11 @@ function BC:DeleteSelected(items, allowClosed)
     local title = "Wirklich " .. #items .. " Taschenplatz/-plätze freimachen?\n"
         .. "Verlorener Händlerwert: " .. self:Money(total) .. "\n"
         .. table.concat(preview, "\n") .. "\nDiese Löschung kann nicht rückgängig gemacht werden!"
-    local popup = StaticPopup_Show("BAGCLEANER_CONFIRM", title)
-    if not popup then self.pending = nil; self.Print("Sicherheitsabfrage konnte nicht geöffnet werden.") end
+    local ok, shown = pcall(self.ShowDeleteConfirmation, self, title)
+    if not ok or not shown then
+        self.pending = nil
+        self.Print("Sicherheitsabfrage konnte nicht geöffnet werden; es wurde nichts gelöscht.")
+    end
 end
 
 function BC:Cleanup(n, allEligible, allowClosed)
@@ -540,14 +546,6 @@ function BC:HardwareDeleteNext()
     if self.RefreshUI then self:RefreshUI() end
 end
 
-StaticPopupDialogs = StaticPopupDialogs or {}
-StaticPopupDialogs.BAGCLEANER_CONFIRM = {
-    text = "%s", button1 = YES, button2 = NO,
-    OnAccept = function() BC:AcceptPending(); BC:HardwareDeleteNext() end,
-    OnCancel = function() BC.pending = nil end,
-    timeout = 0, whileDead = 1, hideOnEscape = 1, preferredIndex = 3,
-}
-
 SLASH_BAGCLEANER1 = "/clean"
 SLASH_BAGCLEANER2 = "/bagcleaner"
 SlashCmdList.BAGCLEANER = function(message)
@@ -577,7 +575,7 @@ SlashCmdList.BAGCLEANER = function(message)
         local elv = BC.GetElvBagFrame and BC:GetElvBagFrame()
         local active, mode = BC.GetActiveBagFrame and BC:GetActiveBagFrame()
         local titan = _G.TitanPlugins and _G.TitanPlugins.BagCleaner
-        BC.Print("Version 1.4.1 | UI=" .. tostring(BC.panel ~= nil)
+        BC.Print("Version 1.4.2 | UI=" .. tostring(BC.panel ~= nil)
             .. " | ElvUI=" .. tostring(BC:Loaded("ElvUI"))
             .. " | ElvUI-Tasche=" .. tostring(elv and elv:GetName() or "nicht gefunden")
             .. " | Tasche offen=" .. tostring(active ~= nil)
@@ -616,7 +614,7 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
             if not ok then BC.Print("UI-Fehler: " .. tostring(err) .. " | bitte Screenshot sichern") end
         end
         if BC.RegisterTitan then BC:RegisterTitan() end
-        BC.Print("v1.4.1 geladen. Clean-Liste: Klick loeschen | Shortcut blacklisten | /clean status")
+        BC.Print("v1.4.2 geladen. Clean-Liste: Klick loeschen | Shortcut blacklisten | /clean status")
         BC:RequestRefresh()
     elseif BC.db then
         BC:RequestRefresh()

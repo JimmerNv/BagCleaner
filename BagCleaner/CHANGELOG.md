@@ -1,5 +1,12 @@
 # Änderungen
 
+## 1.4.2 – WoW Forever
+
+- **Fix:** Eigene Löschbestätigung ersetzt die globale Blizzard-`StaticPopupDialogs`-Registrierung, die geschützte Funktionen (z. B. Gildenbank-Käufe, Inventaraktionen und Logout) durch UI-Taint beeinträchtigen konnte.
+- Abbrechen bzw. Schließen des Bestätigungsfensters verwirft die vorbereitete Auswahl ohne Löschung.
+- Prüfung des Gegenstands vor jeder Löschung sowie echte Nutzerklicks für jeden Stapel bleiben bestehen.
+- Regressionstests zur vollständigen Entkopplung von der Blizzard-Popup-Tabelle.
+
 ## 1.4.1 – WoW Forever
 
 - Eigenständiger dunkler, fast undurchsichtiger Hintergrund mit Rahmen für das Hauptfenster (auch ohne ElvUI oder SetBackdrop).

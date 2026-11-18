@@ -1,4 +1,4 @@
-# BagCleaner 1.4.1 – WoW Forever
+# BagCleaner 1.4.2 – WoW Forever
 
 Ein eigenständiges Taschen-Aufräum-Addon mit bevorzugter ElvUI-Anbindung und optionalem Titan Panel. **Dieses Projekt unterstützt WoW Forever (Interface 16001, Client 1.60.1)**; nicht den 3.3.5a-Client.
 
@@ -83,7 +83,7 @@ Der Schutz weißer Gegenstände kann weiterhin global im Taschenmenü ausgeschal
 
 ## Sicherheits- und Clientgrenzen
 
-Ein Klick auf „Platz schaffen“ bereitet die Auswahl vor. Standardmäßig erscheint eine Bestätigung, die sich in den Optionen abschalten lässt. **WoW Forever verlangt beim Löschen eine echte Eingabe pro Stapel**; nach der ersten Löschung braucht jeder weitere Stapel den Button **„Jetzt löschen“**. Das gilt auch bei abgeschalteter BagCleaner-Bestätigung. Eventuelle zusätzliche Blizzard-Bestätigungen werden nicht unterdrückt.
+Ein Klick auf „Platz schaffen“ bereitet die Auswahl vor. Standardmäßig erscheint eine **eigene BagCleaner-Bestätigung**, die sich in den Optionen abschalten lässt. Diese verwendet **nicht** Blizzards `StaticPopupDialogs` und vermeidet damit die Taint-Ursache, die Gildenbank-Käufe, Gegenstandsaktionen und Logout beeinträchtigen konnte. **WoW Forever verlangt beim Löschen eine echte Eingabe pro Stapel**; nach der ersten Löschung braucht jeder weitere Stapel den Button **„Jetzt löschen“**. Das gilt auch bei abgeschalteter BagCleaner-Bestätigung. Eventuelle zusätzliche Blizzard-Bestätigungen werden nicht unterdrückt.
 
 Vor jeder Löschung prüft BagCleaner den Gegenstand im Slot erneut (Item-ID, Link, Anzahl, Händlerwert und Schutzstatus). Bei unerwarteter Änderung wird der Vorgang abgebrochen.
 
