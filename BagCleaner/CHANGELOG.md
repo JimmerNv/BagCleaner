@@ -1,3 +1,9 @@
+## 1.4.8 – WoW Forever
+
+- Fix the Forever API regression test to match the new default: white-quality items are not automatically protected.
+- Explicitly verify that enabling global white-item protection still excludes white items from queued deletion.
+- No change to player-facing deletion behavior or existing saved settings.
+
 ## 1.4.7 – WoW Forever
 
 - Fix: White-quality items are **not automatically protected**. Global white-item protection is disabled by default and remains an explicit opt-in.

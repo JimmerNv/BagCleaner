@@ -50,7 +50,15 @@ assert(BC:Loaded('ElvUI'),'modern add-on lookup')
 assert(BC:GetMaxBagIndex()==5,'modern bag index')
 local entries=BC:Scan('stack')
 assert(#entries==3,'quest class exclusion')
-assert(entries[1].id==1004 and entries[1].protected,'white protected')
+assert(entries[1].id==1004 and not entries[1].protected,'white not protected by default')
+-- Verify white items are excluded rather than marked protected when the client
+-- offers no reliable quest-identification API.
+local questAPI=C_Container.GetContainerItemQuestInfo
+C_Container.GetContainerItemQuestInfo=nil
+assert(BC:ReadSlot(0,4)==nil, 'without quest API white is skipped for safety')
+C_Container.GetContainerItemQuestInfo=questAPI
+BC.db.protectWhite=true
+assert(BC:ReadSlot(0,4).protected, 'manually enabling global white protection works')
 BC.db.confirmDelete=false
 BC:Cleanup(2,true)
 assert(BC.job and #BC.job.items==2,'only two grey stacks eligible')
