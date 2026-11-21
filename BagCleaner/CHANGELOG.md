@@ -1,3 +1,34 @@
+## 1.4.7 – WoW Forever
+
+- Fix: White-quality items are **not automatically protected**. Global white-item protection is disabled by default and remains an explicit opt-in.
+- Migrate the previously persisted default `protectWhite=true` to `false` once, without touching the saved Hide/Protect item lists. After migration a manually enabled global protection setting persists.
+- If the client has no quest-item API, white items are omitted from cleanup for safety rather than automatically listed as protected.
+- Preserve the per-row Delete button, right-click Hide/Protect controls, centered options dialog, confirmation and deletion safeguards.
+
+## 1.4.6
+
+- Open the options window centered on screen, above BagCleaner and ElvUI bag frames.
+- Keep the Delete button bound exclusively to deletion; right-click opens Hide/Protect.
+- Preserve default protection for white-quality items. Protected items cannot be deleted until the relevant protection is explicitly changed.
+
+## 1.4.5 – WoW Forever
+
+- Fix: The per-item Delete button performs a delete action rather than checking the old quick-blacklist modifier.
+- Hide, Protect, and Hide + Protect are accessible only through the item right-click context menu.
+- A left-click on the item row itself does not delete or protect an item; only the visible Delete button initiates per-item deletion.
+- Remove the misleading shortcut configuration UI; retain stored legacy settings without affecting behavior.
+- Preserve protected-item safeguards, explicit confirmation, batch queue, and Blizzard taint isolation.
+
+## 1.4.4 – WoW Forever
+
+- Fixed the cleanup queue dropping a fast second hardware click while waiting for the next UI tick.
+- The next user click recognizes completed deletions immediately and advances to the next selected stack.
+- Item-row action is always labeled "Löschen"; protection and hiding are managed through the context menu.
+- Protected items remain non-deletable even when the delete label is visible.
+- Improved progress and next-click feedback in the cleanup panel.
+- Added regression tests for rapid queue continuation and protected item button labels.
+- Each deleted stack still requires a real user click due to WoW Forever client restrictions.
+
 # Änderungen
 
 ## 1.4.2 – WoW Forever

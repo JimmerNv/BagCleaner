@@ -1,4 +1,4 @@
-# BagCleaner 1.4.2 – WoW Forever
+# BagCleaner 1.4.7 – WoW Forever
 
 Ein eigenständiges Taschen-Aufräum-Addon mit bevorzugter ElvUI-Anbindung und optionalem Titan Panel. **Dieses Projekt unterstützt WoW Forever (Interface 16001, Client 1.60.1)**; nicht den 3.3.5a-Client.
 
@@ -32,17 +32,16 @@ Ohne ElvUI hat das komplette BagCleaner-Fenster einen eigenen **dunklen, nahezu 
 
 Die **günstigsten Stapel erscheinen bei jedem Öffnen beziehungsweise nach Taschenänderungen zuerst**; eine zuvor gespeicherte Sortierung nach Stückpreis wird beim Update zurückgesetzt. Geschützte Stapel können dabei ebenfalls oben erscheinen, werden aber bei automatischen Löschungen übersprungen.
 
-## Einzelne Stapel löschen und Schnell-Blacklist
+## Einzelne Stapel löschen und Hide/Protect verwalten
 
 Jede Zeile zeigt nun **links das Item-Symbol und den Namen**, darunter die **Stapelanzahl** und daneben den **formatierten Händler-Gesamtwert**. Rechts steht ein **echter anklickbarer Button „Löschen“**, nicht mehr die verwirrenden Statuszeichen `X`, `[S]` oder `[BL]`.
 
-- **Linksklick auf die Zeile** oder auf **„Löschen“**: Nur diesen Stapel zum Löschen auswählen. Die optionale Bestätigung wird wie bisher beachtet.
-- **Geschützter Stapel:** Rechts steht **„Schutz“**; ein gewöhnlicher Klick kann ihn nicht löschen.
-- **Rechtsklick auf die Zeile oder den Button:** Öffnet das Hide/Protect-Menü.
-- **Blacklist-Schnellklick:** In **Optionen → Schnell-Blacklist in der Clean-Liste** die Tastenkombination wählen. Standard: **Strg + Umschalt + Linksklick**. Weitere Kombinationen: Alt + Umschalt, Strg + Alt, Strg, Alt, Umschalt, oder Deaktiviert.
-- **Schnellklick ist einseitig:** Die Kombination fügt den Item-Typ zur Blacklist hinzu; wiederholtes Klicken entfernt den Schutz nicht. Zum Entsperren die Regelverwaltung nutzen.
+- **Linksklick auf „Löschen“:** Wählt ausschließlich diesen ungeschützten Stapel zum Löschen aus. Eine gegebenenfalls aktivierte Bestätigung bleibt erforderlich.
+- **Linksklick auf die Zeile:** Hat keine Schutz- oder Löschwirkung.
+- **Geschützter Stapel:** Zeigt weiterhin „Löschen“, kann aber nicht gelöscht werden, solange der Schutz aktiv ist.
+- **Rechtsklick auf die Zeile oder den Button:** Öffnet das Hide/Protect-Menü. Nur dort können einzelne Gegenstände geschützt werden.
 
-**Wichtig:** Der Shortcut wirkt nur innerhalb der **BagCleaner-Liste** (Zeile und Löschen-Button). Er hängt sich absichtlich **nicht** in die echten ElvUI-/Blizzard-Inventarslots ein, damit dort weder Rechtsklick noch Gegenstandsbenutzung/Anlegen verändert werden. Alle Einstellungen und Regeln bleiben beim Update erhalten.
+**Wichtig:** Es gibt keinen Schnell-Blacklist-Linksklick mehr. BagCleaner verändert keine nativen ElvUI-/Blizzard-Inventarslots. Individuelle Schutzregeln bleiben beim Update erhalten.
 
 ## Rechtsklick-Menü in der BagCleaner-Liste
 
@@ -54,7 +53,7 @@ Rechtsklick auf eine angezeigte Zeile öffnet ein kleines Menü:
 
 Zum Zurücknehmen: Über **Optionen → Hide / Protect verwalten** oder `/clean rules` die gemeinsame Verwaltung öffnen. Dort sind `H` (versteckt) und `P` (geschützt) erkennbar. **Linksklick** auf einen versteckten Eintrag entfernt Hide; **Rechtsklick** entfernt Protect. Hat ein Eintrag nur Protect, entfernt auch Linksklick den Schutz. Falls beide aktiv waren, können sie unabhängig voneinander entfernt werden. Der bisherige Befehl `/clean blacklist` öffnet ebenfalls die Verwaltung.
 
-Der Schutz weißer Gegenstände kann weiterhin global im Taschenmenü ausgeschaltet werden. Explizit geschützte Items bleiben unabhängig davon geschützt. Questgegenstände und unverkäufliche Items bleiben generell ausgeschlossen.
+Weiße Gegenstände sind standardmäßig **nicht** geschützt. Der globale Schutz kann im Taschenmenü bei Bedarf eingeschaltet werden. Bereits gespeicherte `protectWhite=true`-Werte aus älteren Versionen werden bei der Aktualisierung auf 1.4.7 einmalig auf **aus** gesetzt; spätere bewusste Änderungen bleiben erhalten. Explizit geschützte Items bleiben unabhängig davon geschützt. Questgegenstände und unverkäufliche Items bleiben generell ausgeschlossen. Wenn eine Questgegenstandsprüfung nicht verfügbar ist, werden weiße Items sicherheitshalber nicht in die Löschliste aufgenommen.
 
 ## Zugriff
 

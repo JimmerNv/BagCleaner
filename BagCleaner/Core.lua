@@ -1,4 +1,4 @@
--- BagCleaner 1.4.2 - WoW Forever 1.60.1 (Lua 5.1)
+-- BagCleaner 1.4.7 - WoW Forever 1.60.1 (Lua 5.1)
 -- Standalone by default, with an automatic ElvUI bags integration.
 local addonName, BC = ...
 _G.BagCleaner = BC
@@ -7,7 +7,7 @@ local floor, max, min = math.floor, math.max, math.min
 local format = string.format
 local insert, sort = table.insert, table.sort
 local unpack = unpack
-local DEFAULTS = { autoOpen = false, protectWhite = true, confirmDelete = true, lastSlots = 3, sortBy = "stack", blacklistShortcut = "CTRL-SHIFT" }
+local DEFAULTS = { autoOpen = false, protectWhite = false, confirmDelete = true, lastSlots = 3, sortBy = "stack", blacklistShortcut = "CTRL-SHIFT" }
 local eventFrame = CreateFrame("Frame")
 BC.frame = eventFrame
 BC.items = {}
@@ -26,6 +26,15 @@ function BC:InitDB()
     if type(BagCleanerDB) ~= "table" then BagCleanerDB = {} end
     for key, value in pairs(DEFAULTS) do
         if BagCleanerDB[key] == nil then BagCleanerDB[key] = value end
+    end
+    -- v1.4.7 changes the historical default: white-quality items are no longer
+    -- protected automatically. Older SavedVariables persisted that old default
+    -- as protectWhite=true, indistinguishable from a manual opt-in. Reset the
+    -- legacy global preference once while preserving explicit per-item rules.
+    -- After migration, enabling protection in Options remains persistent.
+    if BagCleanerDB.whiteProtectionDefaultMigrated ~= true then
+        BagCleanerDB.protectWhite = false
+        BagCleanerDB.whiteProtectionDefaultMigrated = true
     end
     -- Previous builds allowed unit-price sorting. Always prioritize the total
     -- vendor value of one stack; migrate previous account settings as well.
@@ -235,13 +244,17 @@ function BC:ReadSlot(bag, slot)
         if instantClass == 12 then questClass = true end
     end
     if questClass then return nil end
+    -- Without a quest-item API we cannot safely distinguish ordinary white
+    -- items from quest items. Omit white items instead of silently marking
+    -- every white stack protected despite the user's disabled global guard.
+    if quality == 1 and not self:HasQuestAPI() then return nil end
     if self:IsConjuredItem(bag, slot, id) then return nil end
     local questCheck = self:IsQuestItem(bag, slot)
     if questCheck then return nil end
     count = max(1, tonumber(count) or 1)
     -- Protect/Blacklist is independent of rarity. A hidden item is not scanned.
     local blacklisted = self.db.blacklist[tostring(id)] ~= nil
-    local protected = blacklisted or (quality == 1 and (self.db.protectWhite or not self:HasQuestAPI()))
+    local protected = blacklisted or (quality == 1 and self.db.protectWhite)
     return {
         bag = bag, slot = slot, id = id, link = link, name = name,
         quality = quality, count = count, icon = icon or itemTexture,
@@ -469,7 +482,9 @@ function BC:JobTick()
     local job = self.job
     if not job then return end
     local now = GetTime()
-    if now < job.nextAt then return end
+    -- Always inspect an in-flight deletion even during the old throttle
+    -- window, so the next hardware click is not silently discarded.
+    if now < job.nextAt and not job.waiting then return end
     if not job.allowClosed and self.GetActiveBagFrame and not self:GetActiveBagFrame() then
         self:StopJob("Taschen geschlossen; Aufräumen angehalten.")
         return
@@ -494,7 +509,9 @@ function BC:JobTick()
         job.lost = job.lost + old.total
         job.waiting = nil
         job.index = job.index + 1
-        job.nextAt = now + 0.3
+        -- A fresh hardware click may continue immediately once the last deletion
+        -- has been observed; a fixed cooldown silently swallowed rapid clicks.
+        job.nextAt = now
         if self.RefreshUI then self:RefreshUI() end
         if job.index > #job.items then self:StopJob("Aufräumen abgeschlossen.") end
         return
@@ -511,8 +528,21 @@ end
 function BC:HardwareDeleteNext()
     local job = self.job
     if not job then return end
-    if job.waiting then self.Print("Warte auf Bestätigung der letzten Löschung."); return end
-    if GetTime() < (job.nextAt or 0) then return end
+    if job.waiting then
+        -- Confirm completion here too: the next real click can arrive before
+        -- OnUpdate's throttled JobTick, especially after a fast UI refresh.
+        self:JobTick()
+        job = self.job
+        if not job then return end
+        if job.waiting then
+            self.Print("Vorherige Löschung noch nicht bestätigt; erneut klicken, sobald sie abgeschlossen ist.")
+            return
+        end
+    end
+    if GetTime() < (job.nextAt or 0) then
+        self.Print("Nächster Stapel noch nicht bereit; bitte erneut klicken.")
+        return
+    end
     if type(InCombatLockdown) == "function" and InCombatLockdown() then
         self:StopJob("Im Kampf nicht verfügbar."); return
     end
@@ -575,7 +605,7 @@ SlashCmdList.BAGCLEANER = function(message)
         local elv = BC.GetElvBagFrame and BC:GetElvBagFrame()
         local active, mode = BC.GetActiveBagFrame and BC:GetActiveBagFrame()
         local titan = _G.TitanPlugins and _G.TitanPlugins.BagCleaner
-        BC.Print("Version 1.4.2 | UI=" .. tostring(BC.panel ~= nil)
+        BC.Print("Version 1.4.4 | UI=" .. tostring(BC.panel ~= nil)
             .. " | ElvUI=" .. tostring(BC:Loaded("ElvUI"))
             .. " | ElvUI-Tasche=" .. tostring(elv and elv:GetName() or "nicht gefunden")
             .. " | Tasche offen=" .. tostring(active ~= nil)
@@ -614,7 +644,7 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
             if not ok then BC.Print("UI-Fehler: " .. tostring(err) .. " | bitte Screenshot sichern") end
         end
         if BC.RegisterTitan then BC:RegisterTitan() end
-        BC.Print("v1.4.2 geladen. Clean-Liste: Klick loeschen | Shortcut blacklisten | /clean status")
+        BC.Print("v1.4.4 geladen. Clean-Liste: Klick loeschen | Shortcut blacklisten | /clean status")
         BC:RequestRefresh()
     elseif BC.db then
         BC:RequestRefresh()

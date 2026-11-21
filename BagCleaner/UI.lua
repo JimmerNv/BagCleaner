@@ -97,69 +97,26 @@ local function Tip(button, lines)
     button:SetScript("OnLeave", function() GameTooltip:Hide() end)
 end
 
--- Quick blacklist affects ONLY clicks in BagCleaner's own item list.
--- Never replace ElvUI/Blizzard bag button scripts: doing so can break the
--- default right-click/use/equip behavior of real inventory slots.
-local SHORTCUTS = {
-    { code = "CTRL-SHIFT", label = "Strg + Umschalt + Linksklick", ctrl = true, shift = true, alt = false },
-    { code = "ALT-SHIFT", label = "Alt + Umschalt + Linksklick", ctrl = false, shift = true, alt = true },
-    { code = "CTRL-ALT", label = "Strg + Alt + Linksklick", ctrl = true, shift = false, alt = true },
-    { code = "CTRL", label = "Strg + Linksklick", ctrl = true, shift = false, alt = false },
-    { code = "ALT", label = "Alt + Linksklick", ctrl = false, shift = false, alt = true },
-    { code = "SHIFT", label = "Umschalt + Linksklick", ctrl = false, shift = true, alt = false },
-    { code = "OFF", label = "Deaktiviert", ctrl = false, shift = false, alt = false },
-}
-
-function BC:GetBlacklistShortcutLabel()
-    local code = self.db and self.db.blacklistShortcut or "CTRL-SHIFT"
-    for _, shortcut in ipairs(SHORTCUTS) do
-        if shortcut.code == code then return shortcut.label end
-    end
-    return SHORTCUTS[1].label
-end
-
-function BC:IsBlacklistShortcutDown()
-    local code = self.db and self.db.blacklistShortcut
-    if not code or code == "OFF" then return false end
-    local ctrl = type(IsControlKeyDown) == "function" and IsControlKeyDown() and true or false
-    local shift = type(IsShiftKeyDown) == "function" and IsShiftKeyDown() and true or false
-    local alt = type(IsAltKeyDown) == "function" and IsAltKeyDown() and true or false
-    for _, shortcut in ipairs(SHORTCUTS) do
-        if shortcut.code == code then
-            return ctrl == shortcut.ctrl and shift == shortcut.shift and alt == shortcut.alt
-        end
-    end
-    return false
-end
-
-function BC:OnItemListClick(item, mouse, anchor)
+-- Item protection is exclusively a right-click context-menu action.
+-- An explicit Delete button must never change blacklist state, regardless
+-- of keyboard modifiers or legacy SavedVariables shortcut settings.
+function BC:OnItemListClick(item, mouse, anchor, deleteRequested)
     if not item then return end
     if mouse == "RightButton" then
         self:OpenItemMenu(item, anchor)
         return
     end
-    if mouse ~= "LeftButton" then return end
-    -- Modifier has precedence, including for protected white items.
-    if self:IsBlacklistShortcutDown() then
-        if self.db.blacklist[tostring(item.id)] then
-            self.Print(item.name .. " steht bereits auf der Blacklist.")
-        else
-            self:SetProtectedItem(item, true)
-            self.Print(item.name .. " zur Blacklist hinzugefuegt.")
-        end
-        return
-    end
+    if mouse ~= "LeftButton" or not deleteRequested then return end
     if item.protected then
         self.Print("Gegenstand geschützt (Option oder Blacklist).")
         return
     end
-    -- Never interpret an item-row click as 'delete next' in an existing batch.
     if self.job or self.pending then
-        self.Print("Ein anderer Löschvorgang ist bereits aktiv. Nutze 'Jetzt löschen'.")
+        self.Print("Ein anderer Löschvorgang ist bereits aktiv. Nutze 'Nächsten löschen'.")
         return
     end
     self:DeleteOne(item)
-    -- With confirmation disabled, the SAME real user click performs the deletion.
+    -- With confirmation disabled, the same hardware click can perform deletion.
     if self.job then self:HardwareDeleteNext() end
 end
 
@@ -365,38 +322,25 @@ function BC:SyncOptions()
     self.options.auto:SetChecked(self.db.autoOpen)
     self.options.protect:SetChecked(self.db.protectWhite)
     self.options.confirm:SetChecked(self.db.confirmDelete)
-    if self.options.shortcutButton then
-        self.options.shortcutButton.text:SetText(self:GetBlacklistShortcutLabel() .. "  v")
-    end
 end
 
-function BC:ShowOptions(frame)
+function BC:ShowOptions()
     if not self.options then return end
-    frame = frame or self.elvButton or self.standaloneButton
+    -- Options always open centered above the BagCleaner list and ElvUI bags.
+    -- They must not be anchored to an inventory button or holder frame.
     self.options:ClearAllPoints()
-    if frame and frame:IsShown() then
-        if frame == self.elvMenuHolder then
-            self.options:SetPoint("TOPRIGHT", frame, "TOPLEFT", -6, 0)
-        else
-            self.options:SetPoint("TOPRIGHT", frame, "BOTTOMRIGHT", 0, -4)
-        end
-    else
-        self.options:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
-    end
+    self.options:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
     self:SyncOptions()
     self.options:Show()
+    if type(self.options.Raise) == "function" then self.options:Raise() end
 end
 
 function BC:ToggleOptions()
     if not self.options then return end
     if self.options:IsShown() then
         self.options:Hide()
-        if self.shortcutMenu then self.shortcutMenu:Hide() end
     else
-        local elv = self:GetElvBagFrame()
-        local holder = elv and (elv.ContainerHolder or _G.ElvUI_ContainerFrameContainerHolder)
-        self:ShowOptions(holder and holder:IsShown() and holder or
-            (elv and elv:IsShown() and self.elvButton) or self.standaloneButton)
+        self:ShowOptions()
     end
 end
 
@@ -415,14 +359,13 @@ end
 
 function BC:MakeOptions()
     local f = CreateFrame("Frame", "BagCleanerOptions", UIParent)
-    f:SetSize(310, 247)
-    f:SetFrameStrata("DIALOG")
+    f:SetSize(310, 203)
+    f:SetFrameStrata("FULLSCREEN_DIALOG")
     f:SetClampedToScreen(true)
+    f:SetToplevel(true)
+    f:EnableMouse(true)
     Skin(f)
     f:Hide()
-    f:SetScript("OnHide", function()
-        if BC.shortcutMenu then BC.shortcutMenu:Hide() end
-    end)
     self.options = f
     f.title = Label(f, "BagCleaner – Taschenmenü", 12, 0.35, 0.75, 1)
     f.title:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -10)
@@ -430,7 +373,6 @@ function BC:MakeOptions()
     close:SetPoint("TOPRIGHT", f, "TOPRIGHT", -6, -6)
     close:SetScript("OnClick", function()
         f:Hide()
-        if BC.shortcutMenu then BC.shortcutMenu:Hide() end
     end)
     local function Check(name, caption, y, func)
         local cb = CreateFrame("CheckButton", name, f, "UICheckButtonTemplate")
@@ -444,51 +386,16 @@ function BC:MakeOptions()
     f.auto = Check("BagCleanerAutoOpen", "Mit den Taschen automatisch öffnen", -33, function(btn)
         BC.db.autoOpen = btn:GetChecked() and true or false
     end)
-    f.protect = Check("BagCleanerProtectWhite", "Weiße Gegenstände schützen", -61, function(btn)
+    f.protect = Check("BagCleanerProtectWhite", "Weiße Gegenstände schützen (optional)", -61, function(btn)
         BC.db.protectWhite = btn:GetChecked() and true or false
         BC:RequestRefresh()
     end)
     f.confirm = Check("BagCleanerConfirmDelete", "Vor dem Löschen bestätigen", -89, function(btn)
         BC.db.confirmDelete = btn:GetChecked() and true or false
     end)
-    local shortcutLabel = Label(f, "Schnell-Blacklist in der Clean-Liste:", 11)
-    shortcutLabel:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -124)
-    local shortcutButton = Button(f, "", 273, 23)
-    shortcutButton:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -144)
-    f.shortcutButton = shortcutButton
-    Tip(shortcutButton, {
-        "Tastenkombination für die BagCleaner-Liste",
-        "Mit der gewählten Kombination auf eine Zeile oder ihr Löschen-Symbol klicken.",
-        "Der Gegenstand wird geschützt, nicht gelöscht.",
-        "Normale ElvUI-Taschen-Klicks bleiben unverändert.",
-    })
-    local dropdown = CreateFrame("Frame", "BagCleanerShortcutMenu", UIParent)
-    dropdown:SetSize(285, #SHORTCUTS * 25 + 12)
-    dropdown:SetFrameStrata("FULLSCREEN_DIALOG")
-    dropdown:SetFrameLevel(300)
-    dropdown:SetClampedToScreen(true)
-    Skin(dropdown)
-    dropdown:Hide()
-    dropdown:SetPoint("TOPLEFT", shortcutButton, "BOTTOMLEFT", 0, -2)
-    self.shortcutMenu = dropdown
-    dropdown.choices = {}
-    for index, entry in ipairs(SHORTCUTS) do
-        local option = Button(dropdown, entry.label, 269, 23)
-        option:SetPoint("TOPLEFT", dropdown, "TOPLEFT", 8, -7 - (index - 1) * 25)
-        dropdown.choices[index] = option
-        option:SetScript("OnClick", function()
-            BC.db.blacklistShortcut = entry.code
-            dropdown:Hide()
-            BC:SyncOptions()
-        end)
-    end
-    shortcutButton:SetScript("OnClick", function()
-        if dropdown:IsShown() then dropdown:Hide() else dropdown:Show() end
-    end)
     local blacklist = Button(f, "Hide / Protect verwalten ...", 273, 23)
-    blacklist:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -179)
+    blacklist:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -130)
     blacklist:SetScript("OnClick", function()
-        dropdown:Hide()
         BC:ToggleBlacklist()
     end)
     local help = Label(f, "Links: Löschen  |  Rechts: Hide / Protect", 10, 0.65, 0.7, 0.77)
@@ -726,9 +633,12 @@ function BC:RefreshUI()
             row.value:SetText(self:Money(item.total))
             row.value:SetTextColor(item.protected and 0.57 or 0.61,
                 item.protected and 0.72 or 0.84, 1)
-            row.deleteButton.text:SetText(item.protected and "Schutz" or "Löschen")
+            -- Protection belongs to the right-click menu, not the row action.
+            -- The left-click button remains "Löschen" even on protected rows;
+            -- the existing protection guard prevents an accidental deletion.
+            row.deleteButton.text:SetText("Löschen")
             if item.protected then
-                row.deleteButton.text:SetTextColor(0.48, 0.75, 1)
+                row.deleteButton.text:SetTextColor(0.52, 0.57, 0.65)
             else
                 row.deleteButton.text:SetTextColor(1, 0.53, 0.53)
             end
@@ -741,9 +651,9 @@ function BC:RefreshUI()
     panel.sortButton.text:SetText("Gesamtwert aufsteigend")
     local job = self.job
     if job then
-        panel.status:SetText("Freigemacht: " .. job.done .. "/" .. #job.items ..
-            (job.waiting and " (warte ...)" or " (nächster Klick)"))
-        panel.run.text:SetText(job.waiting and "Bitte warten" or "Jetzt löschen")
+        panel.status:SetText("Gelöscht: " .. job.done .. "/" .. #job.items ..
+            (job.waiting and " (warte auf Inventar)" or " (nächster Klick)"))
+        panel.run.text:SetText(job.waiting and "Bitte warten" or "Nächsten löschen")
         if job.waiting then panel.run:Disable() else panel.run:Enable() end
     else
         panel.status:SetText((self.db.confirmDelete and "Bestätigung AN" or "Bestätigung AUS") ..
@@ -920,22 +830,23 @@ function BC:MakePanel()
         row.deleteButton:SetPoint("RIGHT", row, "RIGHT", -1, 0)
         row.deleteButton:RegisterForClicks("LeftButtonUp", "RightButtonUp")
         row.deleteButton:SetScript("OnClick", function(self, mouse)
-            BC:OnItemListClick(row.item, mouse, row)
+            -- Keep a left click strictly as a delete request (never Protect).
+            BC:OnItemListClick(row.item,
+                mouse == "RightButton" and "RightButton" or "LeftButton", row, true)
         end)
         Tip(row.deleteButton, {
-            "Löschen: genau diesen Stapel", "Bei Schutz nur die Blacklist-Tastenkombination möglich.",
+            "Linksklick: genau diesen Stapel löschen", "Geschützte Stapel sind nicht löschbar.",
             "Rechtsklick: Hide / Protect / Hide + Protect",
         })
         row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
         row:SetScript("OnClick", function(self, mouse)
-            BC:OnItemListClick(self.item, mouse, self)
+            BC:OnItemListClick(self.item, mouse, self, false)
         end)
         row:SetScript("OnEnter", function(self)
             if not self.item then return end
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
             GameTooltip:SetHyperlink(self.item.link)
-            GameTooltip:AddLine("Linksklick / Löschen-Button: diesen Stapel löschen", 0.8, 0.9, 1)
-            GameTooltip:AddLine(BC:GetBlacklistShortcutLabel() .. ": Blacklist", 0.35, 0.75, 1)
+            GameTooltip:AddLine("Löschen-Button: diesen Stapel löschen", 0.8, 0.9, 1)
             GameTooltip:AddLine("Rechtsklick: Hide / Protect / Beides", 0.8, 0.9, 1)
             if self.item.protected then GameTooltip:AddLine("Geschützt", 1, 0.65, 0.35) end
             GameTooltip:Show()
