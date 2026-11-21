@@ -1,3 +1,12 @@
+## 1.4.9 – WoW Forever
+
+- Fix the headless UI test suite to match BagCleaner 1.4.5–1.4.8 behavior.
+- Verify that white-quality items are not protected by default, while manual opt-in protection remains available.
+- Verify the Delete button never protects items and right-click remains the only Hide/Protect action.
+- Verify that the options window opens centered and above BagCleaner.
+- Remove outdated tests for the retired quick-blacklist shortcut.
+- No changes to gameplay behavior, protected-item handling, or the release pipeline.
+
 ## 1.4.8 – WoW Forever
 
 - Fix the Forever API regression test to match the new default: white-quality items are not automatically protected.

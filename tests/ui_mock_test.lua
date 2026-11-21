@@ -26,6 +26,8 @@ local function widget(name)
     if key == 'GetChecked' then return function() return self._checked end end
     if key == 'GetFrameLevel' then return function() return self._level end end
     if key == 'SetFrameLevel' then return function(_,x) self._level=x end end
+    if key == 'SetFrameStrata' then return function(_,x) self._strata=x end end
+    if key == 'SetPoint' then return function(_,...) self._point={...} end end
     if key == 'GetLeft' then return function() return 850 end end
     if key == 'GetEffectiveScale' then return function() return 1 end end
     if key == 'GetName' then return function() return self._name end end
@@ -84,6 +86,13 @@ BC.AcceptPending,BC.HardwareDeleteNext=oldAccept,oldHardware
 assert(next(StaticPopupDialogs)==nil,'Blizzard popup table remains untouched')
 assert(BC.panel.BagCleanerBackground and #BC.panel.BagCleanerBorder==4,
   'opaque panel and four independent borders without ElvUI or SetBackdrop')
+-- Options must be centered and layered above all BagCleaner launchers.
+assert(BC.options._strata == "FULLSCREEN_DIALOG", 'options must use fullscreen dialog strata')
+BC:ShowOptions()
+assert(BC.options._point and BC.options._point[1] == "CENTER"
+  and BC.options._point[2] == UIParent and BC.options._point[3] == "CENTER",
+  'options must be centered on UIParent instead of attached to bag window')
+BC.options:Hide()
 assert(BC.options.BagCleanerBackground and BC.itemMenu.BagCleanerBackground,
   'options and right-click menu also have their own background in standalone mode')
 assert(BC.panel.sortButton.text._text=='Gesamtwert aufsteigend',
@@ -121,7 +130,7 @@ assert(BC.mode=='elvui','ElvUI preferred')
 assert(not BC.standaloneButton:IsShown(),'standalone hidden under ElvUI')
 ElvUI_ContainerFrame.ContainerHolder:Show()
 assert(BC.options:IsShown(),'settings visible with small ElvUI bag menu')
-assert(BC.options.auto:GetChecked()==false and BC.options.protect:GetChecked()==true,'default options')
+assert(BC.options.auto:GetChecked()==false and BC.options.protect:GetChecked()==false,'default options: whites not protected')
 assert(BC.options.confirm:GetChecked()==true,'confirmation default enabled')
 BC.options.confirm:SetChecked(false); BC.options.confirm.script_OnClick(BC.options.confirm)
 assert(BC.db.confirmDelete==false,'confirmation checkbox is persisted')
@@ -141,8 +150,10 @@ assert(not BC.db.blacklist['14142'],'blacklist row click removes item')
 BC.blacklistPanel:Hide()
 BC.options.auto:SetChecked(true);BC.options.auto.script_OnClick(BC.options.auto)
 assert(BC.db.autoOpen,'auto option changes DB')
+BC.options.protect:SetChecked(true);BC.options.protect.script_OnClick(BC.options.protect)
+assert(BC.db.protectWhite,'white protection may be enabled explicitly')
 BC.options.protect:SetChecked(false);BC.options.protect.script_OnClick(BC.options.protect)
-assert(not BC.db.protectWhite,'white protection toggle changes DB')
+assert(not BC.db.protectWhite,'white protection can be disabled again')
 BC:TogglePanel();assert(BC.panel:IsShown(),'ElvUI sidebar opens')
 BC.panel:Hide()
 ElvUI_ContainerFrame:Hide()
@@ -157,12 +168,11 @@ BC.db.autoOpen=false
 ContainerFrame1:Hide()
 t=t+1;BC:PollIntegration()
 assert(not BC.panel:IsShown(),'panel stays closed when bags close')
--- v1.4: visible per-item delete and configurable blacklist shortcut.
-assert(BC.db.blacklistShortcut == 'CTRL-SHIFT','default quick-blacklist chord')
-assert(BC.options.shortcutButton and BC.shortcutMenu and #BC.shortcutMenu.choices==7,
-  'shortcut dropdown is present in settings')
+-- v1.4.5: explicit delete is never a blacklist operation, even with modifiers.
 assert(BC.panel.rows[1].deleteButton and BC.panel.rows[1].value,
-  'real per-item delete button plus separate vendor value')
+  'real per-item delete button plus vendor value')
+assert(rawget(BC.options, "shortcutButton") == nil and rawget(BC, "shortcutMenu") == nil,
+  'obsolete quick-blacklist UI was removed')
 local ctrl,shift,alt = false,false,false
 function IsControlKeyDown() return ctrl end
 function IsShiftKeyDown() return shift end
@@ -180,30 +190,32 @@ local one=BC.panel.rows[1]
 assert(one.deleteButton.text._text=='Löschen','delete control labelled clearly')
 assert(one.amount._text=='x1' and one.value._text=='23c','count and vendor value have separate labels')
 one.deleteButton.script_OnClick(one.deleteButton, 'LeftButton')
-assert(deletedCount==1,'trash button executes per-item delete')
+assert(deletedCount==1 and not BC.db.blacklist['97213'],'delete button deletes without protecting')
 shift,ctrl = true,true
-assert(BC:IsBlacklistShortcutDown(),'Ctrl+Shift recognized')
+one.deleteButton.script_OnClick(one.deleteButton, 'LeftButton')
+assert(deletedCount==2 and not BC.db.blacklist['97213'],
+  'Ctrl+Shift+Delete still deletes and never creates protection')
 one.script_OnClick(one,'LeftButton')
-assert(BC.db.blacklist['97213'] and deletedCount==1,'modifier blacklists without deleting')
-BC.items={sample};sample.protected=true;sample.blacklisted=true;BC:RefreshUI()
-assert(one.deleteButton.text._text=='Schutz','protected item shows disabled-style protection label')
-assert(one.value._text=='23c','protected item still has vendor value')
+assert(deletedCount==2 and not BC.db.blacklist['97213'],
+  'clicking the row does not delete or protect')
+one.deleteButton.script_OnClick(one.deleteButton, 'RightButton')
+assert(BC.itemMenu:IsShown(),'right-click on delete button opens rule menu')
+BC.itemMenu.actionButtons[2].script_OnClick()
+assert(BC.db.blacklist['97213'],'protect only through explicit menu selection')
+sample.protected=true;sample.blacklisted=true;BC.items={sample};BC:RefreshUI()
+assert(one.deleteButton.text._text=='Löschen','protected items retain delete button text')
 shift,ctrl=false,false
 one.deleteButton.script_OnClick(one.deleteButton,'LeftButton')
-assert(deletedCount==1,'protected item cannot be deleted via button')
-BC.options.shortcutButton.script_OnClick()
-assert(BC.shortcutMenu:IsShown(),'shortcut selector opens')
-BC.shortcutMenu.choices[2].script_OnClick()
-assert(BC.db.blacklistShortcut=='ALT-SHIFT' and not BC.shortcutMenu:IsShown(),
-  'changing shortcut stores selection and closes list')
-ctrl,shift,alt=true,true,false
-assert(not BC:IsBlacklistShortcutDown(),'old shortcut no longer recognized')
-ctrl,shift,alt=false,true,true
-assert(BC:IsBlacklistShortcutDown(),'new shortcut works')
-BC.shortcutMenu.choices[7].script_OnClick()
-assert(BC.db.blacklistShortcut=='OFF' and not BC:IsBlacklistShortcutDown(),
-  'blacklist shortcut can be disabled')
+assert(deletedCount==2,'protected item cannot be deleted via button')
+-- White items are only protected when the user explicitly enables the option.
+BC.db.blacklist['97213']=nil
+BC.db.protectWhite=true
+sample.protected=true;sample.blacklisted=false;sample.quality=1
+BC.items={sample};BC:RefreshUI()
+one.deleteButton.script_OnClick(one.deleteButton,'LeftButton')
+assert(deletedCount==2 and not BC.db.blacklist['97213'],
+  'opt-in protected white item remains safe and Delete never adds blacklist rules')
 BC.DeleteOne=originalDelete
 BC.panel:Hide()
-print('PASS: visible delete button, price label, blacklist quick-click and configurable shortcut menu')
+print('PASS: delete button never protects, right-click opens rule menu, protected item safe')
 print('PASS: UI creation, ElvUI preference, menu options, standalone fallback, auto-show and close')
